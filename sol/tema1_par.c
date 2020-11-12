@@ -34,8 +34,7 @@ int P;
 
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 
-pthread_barrier_t barrier_julia;
-pthread_barrier_t barrier_mandelbrot;
+pthread_barrier_t barrier;
 
 // citeste argumentele programului
 void get_args(int argc, char **argv) {
@@ -182,23 +181,23 @@ void run_mandelbrot(params *par, int **result_mandelbrot, int width, int height,
 
 void *thread_function(void *arg) {
   int thread_id = *(int *)arg;
+  // calculare indicii de start si stop pentu fiecare thread
   int start = thread_id * (double)width_julia / P;
   int end = MIN((thread_id + 1) * (double)width_julia / P, width_julia);
 
+  // se ruleaza algoritmul julia
   run_julia(&par_julia, result_julia, width_julia, height_julia, start, end);
-  write_output_file(out_filename_julia, result_julia, width_julia,
-                    height_julia);
 
-  pthread_barrier_wait(&barrier_julia);
-  pthread_barrier_wait(&barrier_mandelbrot);
+  // se sincronizeaza thread-urile
+  pthread_barrier_wait(&barrier);
 
+  // se recalculeaza indicii
   start = thread_id * (double)width_mandelbrot / P;
   end = MIN((thread_id + 1) * (double)width_mandelbrot / P, width_mandelbrot);
 
+  // se ruleaza algoritmul maldelbrot
   run_mandelbrot(&par_mandelbrot, result_mandelbrot, width_mandelbrot,
                  height_mandelbrot, start, end);
-  write_output_file(out_filename_mandelbrot, result_mandelbrot,
-                    width_mandelbrot, height_mandelbrot);
 
   pthread_exit(NULL);
 }
@@ -207,19 +206,23 @@ int main(int argc, char *argv[]) {
   // se citesc argumentele programului
   get_args(argc, argv);
 
+  // se citeste inputul pentru julia
   read_input_file(in_filename_julia, &par_julia);
   pthread_t tid[P];
   int thread_id[P];
 
-  pthread_barrier_init(&barrier_julia, NULL, P);
-  pthread_barrier_init(&barrier_mandelbrot, NULL, P);
+  // initializare bariera
+  pthread_barrier_init(&barrier, NULL, P);
 
+  // se calculeaza width si height pentru julia
   width_julia = (par_julia.x_max - par_julia.x_min) / par_julia.resolution;
   height_julia = (par_julia.y_max - par_julia.y_min) / par_julia.resolution;
   result_julia = allocate_memory(width_julia, height_julia);
 
+  // se citeste inputul pentru mandelbrot
   read_input_file(in_filename_mandelbrot, &par_mandelbrot);
 
+  // se calculeaza width si height pentru mandelbrot
   width_mandelbrot =
       (par_mandelbrot.x_max - par_mandelbrot.x_min) / par_mandelbrot.resolution;
   height_mandelbrot =
@@ -237,9 +240,18 @@ int main(int argc, char *argv[]) {
     pthread_join(tid[i], NULL);
   }
 
-  pthread_barrier_destroy(&barrier_julia);
-  pthread_barrier_destroy(&barrier_mandelbrot);
+  // se scrie in fisier pentru julia
+  write_output_file(out_filename_julia, result_julia, width_julia,
+                    height_julia);
 
+  // se scrie in fisier pentru mandelbrot
+  write_output_file(out_filename_mandelbrot, result_mandelbrot,
+                    width_mandelbrot, height_mandelbrot);
+
+  // se distruge bariera
+  pthread_barrier_destroy(&barrier);
+
+  // se elibereaza memoria
   free_memory(result_julia, height_julia);
   free_memory(result_mandelbrot, height_mandelbrot);
 
